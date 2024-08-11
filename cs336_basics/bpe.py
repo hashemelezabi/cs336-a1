@@ -66,7 +66,11 @@ def train_bpe(
     num_merges = vocab_size - len(vocab)
     merges = []
     for i in range(num_merges):
+        print(pretoken_freq)
         pair_counts = count_pairs(pretoken_freq)
+        if not pair_counts:
+            print(f"Warning: No more pairs to merge, stopping at vocab size {len(vocab)} instead of {vocab_size}.")
+            break
         max_freq = max(pair_counts.values())
         most_freq_pairs = [p for p in pair_counts if pair_counts[p] == max_freq]
         best_pair = max(
