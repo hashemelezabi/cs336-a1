@@ -2,7 +2,9 @@ import os
 import regex as re
 from collections import defaultdict
 import argparse
-import pickle
+import pickle, json
+
+# def update_pair_counts(counts, )
 
 def count_pairs(vocab):
     pair_counts = defaultdict(int)
@@ -66,7 +68,6 @@ def train_bpe(
     num_merges = vocab_size - len(vocab)
     merges = []
     for i in range(num_merges):
-        print(pretoken_freq)
         pair_counts = count_pairs(pretoken_freq)
         if not pair_counts:
             print(f"Warning: No more pairs to merge, stopping at vocab size {len(vocab)} instead of {vocab_size}.")
@@ -84,10 +85,7 @@ def train_bpe(
     
     return vocab, merges
 
-
-
-
-if __name__ == '__main__':
+def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--input-path",
@@ -110,8 +108,10 @@ if __name__ == '__main__':
         type=str,
         help="Name of dataset",
     )
+    return parser.parse_args()
 
-    args = parser.parse_args()
+if __name__ == '__main__':
+    args = parse_args()
     vocab, merges = train_bpe(
         input_path=args.input_path,
         vocab_size=args.vocab_size,
@@ -120,7 +120,14 @@ if __name__ == '__main__':
     
     # Save the vocab and merges
     os.makedirs(f"bpe_out/{args.name}", exist_ok=True)
-    with open(f"bpe_out/{args.name}/vocab.pkl", "wb") as f:
-        pickle.dump(vocab, f)
-    with open(f"bpe_out/{args.name}/merges.pkl", "wb") as f:
-        pickle.dump(merges, f)
+    token_to_id = {}
+    for k, v in vocab.items():
+        if 128 + len(args.special_tokens) <= k < 256 + len(args.special_tokens):
+            # These bytes can't be decoded to utf-8 (meaningless on their own)
+            continue
+        token_to_id[v.decode('utf-8')] = k
+    with open(f"bpe_out/{args.name}/vocab.json", "w", encoding="utf-8") as f:
+        f.write(json.dumps(token_to_id, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
+    with open(f"bpe_out/{args.name}/merges.txt", "w") as f:
+        for a, b in merges:
+            f.write(f"{a.decode('utf-8')} {b.decode('utf-8')}\n")
