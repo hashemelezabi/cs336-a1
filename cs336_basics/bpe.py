@@ -3,16 +3,40 @@ import regex as re
 from collections import defaultdict
 import argparse
 import pickle, json
+import heapq
 
-# def update_pair_counts(counts, )
+"""
+# The two classes below invert the comparison ordering
+# so that Python min heapq can work as a max priority queue.
+"""
+class InvertedBytes(bytes):
+    def __lt__(self, other):
+        return self > other
+    
+    def __gt__(self, other):
+        return self < other
 
-def count_pairs(vocab):
-    pair_counts = defaultdict(int)
-    for token, freq in vocab.items():
-        # token is a tuple of bytes
-        for i in range(len(token) - 1):
-            pair_counts[(token[i], token[i+1])] += freq
-    return pair_counts
+class InvertedTuple(tuple):
+    def __new__(cls, t):
+        return tuple.__new__(cls, (InvertedBytes(t[0]), InvertedBytes(t[1])))
+    
+    def __lt__(self, other):
+        return self > other
+    
+    def __gt__(self, other):
+        return self < other
+
+def count_pairs(words, counts):
+    # where_to_update maps a pair of bytes to a set of indices of
+    # words that contain this pair.
+    pair_counts, where_to_update = defaultdict(int), defaultdict(set)
+    for i in range(len(words)):
+        word = words[i] # tuple of bytes
+        for j in range(len(word) - 1):
+            pair = (word[j], word[j+1])
+            pair_counts[pair] += counts[i]
+            where_to_update[pair].add(i)
+    return pair_counts, where_to_update
 
 def merge_tokens(pair, vocab):
     def find_pairs(pair, token):
@@ -58,12 +82,37 @@ def train_bpe(
     
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     pretokens = re.findall(PAT, text)
-
-    # pretoken_freq maps a tuple of bytes to int
-    pretoken_freq = defaultdict(int)
+    # We store words in a list (instead of dictionary mapping word to count)
+    # because we want to access specific words by index when we update
+    # only the words that need updating after a merge using indices in
+    # where_to_update. We store counts in a separate list so that
+    # counts[i] is the count of words[i]. The only reason we do this is
+    # to implement the where_to_update functionality. We do create a word_counts
+    # dictionary initially and then use it to populate words and counts.
+    word_counts = defaultdict(int)
     for t in pretokens:
-        t_bytes_tup = tuple([c.encode('utf-8') for c in t])
-        pretoken_freq[t_bytes_tup] += 1
+        # no need to encode into UTF-8 bytes yet
+        word_counts[t] += 1
+    words = [] # list of tuples of bytes (words)
+    counts = [] # list of counts of words
+    for word, count in word_counts.items():
+        # word is a tuple of bytes sequences (initially invidivual bytes
+        # before any BPE merges), e.g. (b'h', b'e', b'l', b'l', b'o').
+        word = tuple([c.encode('utf-8') for c in word])
+        words.append(word)
+        counts.append(count)
+
+    # Count pairs, and store where_to_update word indices.
+    pair_counts, where_to_update = count_pairs(words, counts)
+    # Take pairs from where_to_update and put in priority queue where priority is
+    # the count of the pair, breaking ties using the lexicographically greater pair.
+    queue = []
+    for pair, indices in where_to_update.items():
+        count = pair_counts[pair]
+        # pair_string = pair[0].decode('utf-8') + pair[1].decode('utf-8')
+        heapq.heappush(queue, (-count, InvertedTuple(pair), indices))
+    where_to_update.clear()
+    
     
     num_merges = vocab_size - len(vocab)
     merges = []
