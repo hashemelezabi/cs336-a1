@@ -160,9 +160,13 @@ def train_bpe(
     # Drain where_to_update into queue.
     add_to_queue(queue, where_to_update, pair_counts)
     
-    num_merges = vocab_size - len(vocab)
+    print("Words counts:")
+    print(dict(zip(words, counts)))
+    
     merges = []
-    for i in range(num_merges):
+    while len(vocab) < vocab_size:
+        print(queue)
+        print()
         if not queue:
             print(f"Warning: No more pairs to merge, stopping at vocab size {len(vocab)} instead of {vocab_size}.")
             break
