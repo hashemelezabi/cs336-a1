@@ -150,6 +150,11 @@ def train_bpe(
         words.append(word)
         counts.append(count)
 
+    """
+    Words counts:
+[((b'l', b'o', b'w'), 1), ((b' ', b'l', b'o', b'w'), 2), ((b'\n',), 2), ((b'l', b'o', b'w', b'e', b'r'), 1), ((b' ', b'l', b'o', b'w', b'e', b'r'), 2), ((b'w', b'i', b'd', b'e', b's', b't'), 1), ((b' ', b'w', b'i', b'd', b'e', b's', b't'), 2), ((b' ', b'n', b'e', b'w', b'e', b's', b't'), 2)]
+    """
+
     # Count pairs, and store where_to_update word indices.
     # pair_counts is a dict[tuple[bytes, bytes], int] and
     # where_to_update is a dict[tuple[bytes, bytes], set[int]]
@@ -160,17 +165,18 @@ def train_bpe(
     # Drain where_to_update into queue.
     add_to_queue(queue, where_to_update, pair_counts)
     
-    print("Words counts:")
-    print(dict(zip(words, counts)))
-    
     merges = []
     while len(vocab) < vocab_size:
-        print(queue)
-        print()
         if not queue:
             print(f"Warning: No more pairs to merge, stopping at vocab size {len(vocab)} instead of {vocab_size}.")
             break
         neg_count, str1, str2, pair_indices = heapq.heappop(queue)
+        if neg_count == 0:
+            # If best pair has count zero, it's a pair that no longer exists due
+            # to other merges, e.g. ('w', 'e') being replaced by ('ow', 'e') because
+            # every occurrence of 'we' is part of 'owe'. This situation means we're done
+            # merging.
+            break
         # Turn back to tuple of bytes; it was stored as strings
         # to ensure lexicographical ordering in the priority queue.
         best_pair = (str1.encode('utf-8'), str2.encode('utf-8')) 
