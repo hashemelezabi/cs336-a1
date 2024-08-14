@@ -6,25 +6,27 @@ import pickle, json
 import heapq
 
 """
-# The two classes below invert the comparison ordering
+# This class inverts the comparison ordering
 # so that Python min heapq can work as a max priority queue.
 """
-class InvertedBytes(bytes):
+class InvertedString(str):
     def __lt__(self, other):
-        return self > other
+        return str.__gt__(self, other)
     
     def __gt__(self, other):
-        return self < other
-
-class InvertedTuple(tuple):
-    def __new__(cls, t):
-        return tuple.__new__(cls, (InvertedBytes(t[0]), InvertedBytes(t[1])))
+        return str.__lt__(self, other)
     
-    def __lt__(self, other):
-        return self > other
+    def __le__(self, other):
+        return str.__ge__(self, other)
     
-    def __gt__(self, other):
-        return self < other
+    def __ge__(self, other):
+        return str.__le__(self, other)
+    
+    def __eq__(self, other):
+        return str.__eq__(self, other)
+    
+    def __ne__(self, other):
+        return str.__ne__(self, other)
 
 def count_pairs(words, counts):
     # where_to_update maps a pair of bytes to a set of indices of
@@ -38,21 +40,67 @@ def count_pairs(words, counts):
             where_to_update[pair].add(i)
     return pair_counts, where_to_update
 
-def merge_tokens(pair, vocab):
-    def find_pairs(pair, token):
-        for i in range(len(token) - 1):
-            if pair == (token[i], token[i+1]):
+def merge_tokens(pair, pair_indices, pair_counts, words, counts):
+    """
+    - pair is the tuple of bytes that is being merged.
+    - pair_indices is the indices of words that include the pair
+        and thus should be updated.
+    - pair_counts maps pair to count. Any pairs overlapping with the merged
+        pair should be updated in it.
+    - words is the list of words (tuple of bytes), e.g. ('l', 'o', 'w')
+        or ('l', 'ow') after the pair ('o', 'w') is merged.
+    - counts[i] is the frequency of words[i] in the corpus.
+    
+    Returns: New where_to_update dictionary.
+    """
+    def find_pairs(pair, word):
+        for i in range(len(word) - 1):
+            if pair == (word[i], word[i+1]):
                 yield i
-    v_out = {}
-    for token, freq in vocab.items():
+    merged = pair[0] + pair[1]
+    where_to_update = defaultdict(set)
+    for i in pair_indices:
+        word = words[i]
         start = 0
-        new_token = ()
-        for pair_idx in find_pairs(pair, token):
-            new_token += token[start:pair_idx] + (token[pair_idx] + token[pair_idx+1],)
+        new_word = ()
+        # Find occurrences of the pair and merge them, updating
+        # pair_counts and where_to_update appropriately.
+        for pair_idx in find_pairs(pair, word):
+            new_word += word[start:pair_idx] + (word[pair_idx] + word[pair_idx+1],)
             start = pair_idx + 2
-        new_token += token[start:]
-        v_out[new_token] = freq
-    return v_out
+            # Decrement count of pairs whose second part was the first part of
+            # the merged pair, and increment count of newly formed pair.
+            # E.g. if the merged pair is ('s', 't'), then if we look at a word
+            # containing ('e', 's', 't'), we decrement count of ('e', 's')
+            # and increment count of ('e', 'st').
+            if pair_idx > 0:
+                pair_counts[(word[pair_idx - 1], pair[0])] -= counts[i]
+                pair_counts[(word[pair_idx - 1], merged)] += counts[i]
+                # (word[pair_idx - 1], merged) is a new pair, so add it to where_to_update
+                where_to_update[(word[pair_idx - 1], merged)].add(i)
+            # Similarly handle pairs whose first part was the second part of
+            # the merged pair.
+            if pair_idx < len(word) - 2:
+                pair_counts[(pair[1], word[pair_idx + 2])] -= counts[i]
+                pair_counts[(merged, word[pair_idx + 2])] += counts[i]
+                where_to_update[(merged, word[pair_idx + 2])].add(i)
+        # new_word is ('l', 'ow') instead of ('l', 'o', 'w')
+        new_word += word[start:]
+        words[i] = new_word
+    return where_to_update
+
+def add_to_queue(queue, where_to_update, pair_counts):
+    """
+    Takes pairs from where_to_update and adds them to queue
+    with the appropriate priority, then empties where_to_update.
+    """
+    for pair, to_update in where_to_update.items():
+        count = pair_counts[pair]
+        pair_string = (pair[0].decode('utf-8'), pair[1].decode('utf-8'))
+        heapq.heappush(queue, (
+            -count, InvertedString(pair_string[0]), InvertedString(pair_string[1]), to_update
+        ))
+    where_to_update.clear()
 
 def train_bpe(
     input_path: str | os.PathLike,
@@ -103,34 +151,42 @@ def train_bpe(
         counts.append(count)
 
     # Count pairs, and store where_to_update word indices.
+    # pair_counts is a dict[tuple[bytes, bytes], int] and
+    # where_to_update is a dict[tuple[bytes, bytes], set[int]]
     pair_counts, where_to_update = count_pairs(words, counts)
     # Take pairs from where_to_update and put in priority queue where priority is
     # the count of the pair, breaking ties using the lexicographically greater pair.
     queue = []
-    for pair, indices in where_to_update.items():
-        count = pair_counts[pair]
-        # pair_string = pair[0].decode('utf-8') + pair[1].decode('utf-8')
-        heapq.heappush(queue, (-count, InvertedTuple(pair), indices))
-    where_to_update.clear()
-    
+    # Drain where_to_update into queue.
+    add_to_queue(queue, where_to_update, pair_counts)
     
     num_merges = vocab_size - len(vocab)
     merges = []
     for i in range(num_merges):
-        pair_counts = count_pairs(pretoken_freq)
-        if not pair_counts:
+        if not queue:
             print(f"Warning: No more pairs to merge, stopping at vocab size {len(vocab)} instead of {vocab_size}.")
             break
-        max_freq = max(pair_counts.values())
-        most_freq_pairs = [p for p in pair_counts if pair_counts[p] == max_freq]
-        best_pair = max(
-            most_freq_pairs,
-            key=lambda x: (x[0].decode('utf-8'), x[1].decode('utf-8'))
-        )
-        pretoken_freq = merge_tokens(best_pair, pretoken_freq)
+        neg_count, str1, str2, pair_indices = heapq.heappop(queue)
+        # Turn back to tuple of bytes; it was stored as strings
+        # to ensure lexicographical ordering in the priority queue.
+        best_pair = (str1.encode('utf-8'), str2.encode('utf-8')) 
+        if -neg_count != pair_counts[best_pair]:
+            # The pair count has changed due to a merge that overlaps with this pair,
+            # so add back to priority queue with new priority.
+            heapq.heappush(queue, (
+                -pair_counts[best_pair], str1, str2, pair_indices
+            ))
+            continue
+        
         vocab[token_id] = best_pair[0] + best_pair[1]
         token_id += 1
         merges.append(best_pair)
+
+        # Merge the new pair in every word that should be updated. This
+        # updates words, where_to_update, and pair_counts.
+        where_to_update = merge_tokens(best_pair, pair_indices, pair_counts, words, counts)
+        # Drain where_to_update into queue.
+        add_to_queue(queue, where_to_update, pair_counts)
     
     return vocab, merges
 
