@@ -4,6 +4,7 @@ from collections import defaultdict
 import argparse
 import pickle, json
 import heapq
+from tqdm import tqdm
 
 """
 # This class inverts the comparison ordering
@@ -106,7 +107,6 @@ def train_bpe(
     input_path: str | os.PathLike,
     vocab_size: int,
     special_tokens: list[str],
-    test_text: str | None = None,
 ):
     """
     Returns:
@@ -121,15 +121,23 @@ def train_bpe(
     for byte in range(256):
         vocab[token_id] = bytes([byte])
         token_id += 1
+
+    print("Reading file...", end=" ")
     
-    if test_text:
-        text = test_text
-    else:
-        with open(input_path) as f:
-            text = f.read()
+    with open(input_path) as f:
+        text = f.read()
+
+    print("Done")
     
+    print("Pretokenizing...", end=" ")
+
     PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     pretokens = re.findall(PAT, text)
+
+    print("Done")
+
+    print("Counting words (pretokens)...", end=" ")
+
     # We store words in a list (instead of dictionary mapping word to count)
     # because we want to access specific words by index when we update
     # only the words that need updating after a merge using indices in
@@ -150,10 +158,9 @@ def train_bpe(
         words.append(word)
         counts.append(count)
 
-    """
-    Words counts:
-[((b'l', b'o', b'w'), 1), ((b' ', b'l', b'o', b'w'), 2), ((b'\n',), 2), ((b'l', b'o', b'w', b'e', b'r'), 1), ((b' ', b'l', b'o', b'w', b'e', b'r'), 2), ((b'w', b'i', b'd', b'e', b's', b't'), 1), ((b' ', b'w', b'i', b'd', b'e', b's', b't'), 2), ((b' ', b'n', b'e', b'w', b'e', b's', b't'), 2)]
-    """
+    print("Done")
+
+    print("Counting pairs and populating priority queue...", end=" ")
 
     # Count pairs, and store where_to_update word indices.
     # pair_counts is a dict[tuple[bytes, bytes], int] and
@@ -164,8 +171,13 @@ def train_bpe(
     queue = []
     # Drain where_to_update into queue.
     add_to_queue(queue, where_to_update, pair_counts)
+
+    print("Done")
+
+    print("Starting merges...")
     
     merges = []
+    pbar = tqdm(total=vocab_size - len(vocab))
     while len(vocab) < vocab_size:
         if not queue:
             print(f"Warning: No more pairs to merge, stopping at vocab size {len(vocab)} instead of {vocab_size}.")
@@ -197,6 +209,9 @@ def train_bpe(
         where_to_update = merge_tokens(best_pair, pair_indices, pair_counts, words, counts)
         # Drain where_to_update into queue.
         add_to_queue(queue, where_to_update, pair_counts)
+
+        # Update progress bar
+        pbar.update(1)
     
     return vocab, merges
 
