@@ -135,6 +135,7 @@ def train_bpe(
     pretokens = re.findall(PAT, text)
 
     print("Done")
+    del text
 
     print("Counting words (pretokens)...", end=" ")
 
@@ -159,6 +160,8 @@ def train_bpe(
         counts.append(count)
 
     print("Done")
+    del word_counts
+    del pretokens
 
     print("Counting pairs and populating priority queue...", end=" ")
 
