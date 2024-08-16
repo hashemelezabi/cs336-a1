@@ -122,22 +122,15 @@ def train_bpe(
         vocab[token_id] = bytes([byte])
         token_id += 1
 
-    print("Reading file and pretokenizing...")
+    print("Reading file, pretokenizing, and counting words...")
     
     PAT = re.compile(r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
-    pretokens = []
+    word_counts = defaultdict(int)
     with open(input_path) as f:
         for i, line in enumerate(f):
-            print(f"\tProcessing line {i}")
-            pretokens.extend(PAT.findall(line))
-            print(f"\tNow have {len(pretokens)} pretokens")
-
-    print("\tDone")
-    
-    # PAT = re.compile(r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
-    # pretokens = re.findall(PAT, text)
-
-    print("Counting words (pretokens)...", end=" ")
+            for pretoken in PAT.findall(line):
+                encoded = tuple([c.encode('utf-8') for c in pretoken])
+                word_counts[encoded] += 1
 
     # We store words in a list (instead of dictionary mapping word to count)
     # because we want to access specific words by index when we update
@@ -146,22 +139,16 @@ def train_bpe(
     # counts[i] is the count of words[i]. The only reason we do this is
     # to implement the where_to_update functionality. We do create a word_counts
     # dictionary initially and then use it to populate words and counts.
-    word_counts = defaultdict(int)
-    for t in pretokens:
-        # no need to encode into UTF-8 bytes yet
-        word_counts[t] += 1
     words = [] # list of tuples of bytes (words)
     counts = [] # list of counts of words
     for word, count in word_counts.items():
         # word is a tuple of bytes sequences (initially invidivual bytes
         # before any BPE merges), e.g. (b'h', b'e', b'l', b'l', b'o').
-        word = tuple([c.encode('utf-8') for c in word])
         words.append(word)
         counts.append(count)
 
-    print("Done")
+    print("\tDone")
     del word_counts
-    del pretokens
 
     print("Counting pairs and populating priority queue...", end=" ")
 
