@@ -122,20 +122,18 @@ def train_bpe(
         vocab[token_id] = bytes([byte])
         token_id += 1
 
-    print("Reading file...", end=" ")
+    print("Reading file and pretokenizing...")
     
+    PAT = re.compile(r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
+    pretokens = []
     with open(input_path) as f:
-        text = f.read()
+        for line in f:
+            pretokens.extend(PAT.findall(line))
 
-    print("Done")
+    print("\tDone")
     
-    print("Pretokenizing...", end=" ")
-
-    PAT = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-    pretokens = re.findall(PAT, text)
-
-    print("Done")
-    del text
+    # PAT = re.compile(r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
+    # pretokens = re.findall(PAT, text)
 
     print("Counting words (pretokens)...", end=" ")
 
