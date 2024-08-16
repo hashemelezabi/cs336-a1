@@ -127,8 +127,10 @@ def train_bpe(
     PAT = re.compile(r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
     pretokens = []
     with open(input_path) as f:
-        for line in f:
+        for i, line in enumerate(f):
+            print(f"\tProcessing line {i}")
             pretokens.extend(PAT.findall(line))
+            print(f"\tNow have {len(pretokens)} pretokens")
 
     print("\tDone")
     
