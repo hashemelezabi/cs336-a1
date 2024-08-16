@@ -5,6 +5,7 @@ import argparse
 import pickle, json
 import heapq
 from tqdm import tqdm
+import time
 
 """
 # This class inverts the comparison ordering
@@ -123,6 +124,7 @@ def train_bpe(
         token_id += 1
 
     print("Reading file, pretokenizing, and counting words...")
+    start = time.time()
     
     PAT = re.compile(r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
     word_counts = defaultdict(int)
@@ -147,10 +149,12 @@ def train_bpe(
         words.append(word)
         counts.append(count)
 
-    print("\tDone")
     del word_counts
+    end = time.time()
+    print(f"\tTime taken: {(end - start)/60:.2f} minutes")
 
-    print("Counting pairs and populating priority queue...", end=" ")
+    print("Counting pairs and populating priority queue...")
+    start = time.time()
 
     # Count pairs, and store where_to_update word indices.
     # pair_counts is a dict[tuple[bytes, bytes], int] and
@@ -162,9 +166,11 @@ def train_bpe(
     # Drain where_to_update into queue.
     add_to_queue(queue, where_to_update, pair_counts)
 
-    print("Done")
+    end = time.time()
+    print(f"\tTime taken: {(end - start)/60:.2f} minutes")
 
     print("Starting merges...")
+    start = time.time()
     
     merges = []
     pbar = tqdm(total=vocab_size - len(vocab))
@@ -203,6 +209,8 @@ def train_bpe(
         # Update progress bar
         pbar.update(1)
     
+    end = time.time()
+    print(f"\tTime taken: {(end - start)/60:.2f} minutes")
     return vocab, merges
 
 def parse_args():
@@ -246,8 +254,15 @@ if __name__ == '__main__':
             # These bytes can't be decoded to utf-8 (meaningless on their own)
             continue
         token_to_id[v.decode('utf-8')] = k
+    
+    print("Writing vocab and merges to disk...")
+    start = time.time()
+
     with open(f"bpe_out/{args.name}/vocab.json", "w", encoding="utf-8") as f:
         f.write(json.dumps(token_to_id, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
     with open(f"bpe_out/{args.name}/merges.txt", "w") as f:
         for a, b in merges:
             f.write(f"{a.decode('utf-8')} {b.decode('utf-8')}\n")
+
+    end = time.time()
+    print(f"\tTime taken: {(end - start)/60:.2f} minutes")
