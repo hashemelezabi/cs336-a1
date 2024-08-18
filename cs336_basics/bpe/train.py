@@ -86,8 +86,8 @@ def merge_tokens(pair, pair_indices, pair_counts, words, counts):
                 pair_counts[(pair[1], word[pair_idx + 2])] -= counts[i]
                 pair_counts[(merged, word[pair_idx + 2])] += counts[i]
                 where_to_update[(merged, word[pair_idx + 2])].add(i)
-        # new_word is ('l', 'ow') instead of ('l', 'o', 'w')
         new_word += word[start:]
+        # new_word is ('l', 'ow') instead of ('l', 'o', 'w')
         words[i] = new_word
     return where_to_update
 
@@ -131,7 +131,7 @@ def train_bpe(
     with open(input_path) as f:
         for i, line in enumerate(f):
             for pretoken in PAT.findall(line):
-                encoded = tuple([c.encode('utf-8') for c in pretoken])
+                encoded = tuple([bytes([b]) for b in pretoken.encode('utf-8')])
                 word_counts[encoded] += 1
 
     # We store words in a list (instead of dictionary mapping word to count)
@@ -258,8 +258,14 @@ if __name__ == '__main__':
     print("Writing vocab and merges to disk...")
     start = time.time()
 
+    # Write json file that can be viewed by a human
     with open(f"bpe_out/{args.name}/vocab.json", "w", encoding="utf-8") as f:
         f.write(json.dumps(token_to_id, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
+    # Serialize vocab dictionary with pickle. Can't write all entries to JSON
+    # because bytes from 128 up to and not including 256 aren't valid characters.
+    with open(f"bpe_out/{args.name}/vocab.pkl", "wb") as f:
+        pickle.dump(vocab, f)
+    # Write merges to text file
     with open(f"bpe_out/{args.name}/merges.txt", "w") as f:
         for a, b in merges:
             f.write(f"{a.decode('utf-8')} {b.decode('utf-8')}\n")
