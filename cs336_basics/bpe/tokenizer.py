@@ -31,14 +31,6 @@ class Tokenizer:
             vocab = pickle.load(f)
         with open(merges_filepath, 'rb') as f:
             merges = pickle.load(f)
-        # merges = []
-        # with open(merges_filepath, 'r') as f:
-        #     for line in f:
-        #         line_split = line.strip().split(' ')
-        #         if len(line_split) != 2:
-        #             continue
-        #         a, b = line_split # unpack into the two merged tokens
-        #         merges.append((a.encode('utf-8'), b.encode('utf-8')))
         return cls(vocab, merges, special_tokens)
     
     @classmethod
@@ -92,17 +84,21 @@ class Tokenizer:
             special_token_slices.sort()
              # Remove slices contained in other slices, e.g.
              # for "<|endoftext|><|endoftext|>", should remove
-             # the slices for a single "<|endoftext|>".
+             # the slice for a single "<|endoftext|>".
             slices_filtered = []
+            prev_end = -1
             for i in range(len(special_token_slices)):
                 slice = special_token_slices[i]
-                if any(
-                    slice[0] >= special_token_slices[j][0] and \
-                    slice[1] <= special_token_slices[j][1] \
-                    for j in range(len(special_token_slices)) if j != i
-                ):
+                if i < len(special_token_slices) - 1 and special_token_slices[i+1][0] == slice[0]:
+                    # Next slice has same start as this slice but is bigger (has bigger end),
+                    # since we sorted.
+                    continue
+                if i > 0 and slice[1] <= prev_end:
+                    # If previous slice was (11, 37) and this slice is (24, 37), skip this slice
+                    # since it's contained in previous one.
                     continue
                 slices_filtered.append(slice)
+                prev_end = slice[1]
             # Now pretokenize the parts around the special tokens
             # and yield the special tokens intact.
             for i in range(len(slices_filtered)):
