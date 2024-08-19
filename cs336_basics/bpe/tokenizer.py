@@ -25,16 +25,25 @@ class Tokenizer:
         # compile regex pattern for pretokenization
         self.pretokenize_pat = re.compile(r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+""")
 
+    @classmethod
     def from_files(cls, vocab_filepath, merges_filepath, special_tokens=None):
-        # vocab_filepath is a pickle file
         with open(vocab_filepath, 'rb') as f:
             vocab = pickle.load(f)
-        merges = []
-        with open(merges_filepath, 'r') as f:
-            for line in f:
-                a, b = line.strip().split(' ') # unpack into the two merged tokens
-                merges.append((a.encode('utf-8'), b.encode('utf-8')))
+        with open(merges_filepath, 'rb') as f:
+            merges = pickle.load(f)
+        # merges = []
+        # with open(merges_filepath, 'r') as f:
+        #     for line in f:
+        #         line_split = line.strip().split(' ')
+        #         if len(line_split) != 2:
+        #             continue
+        #         a, b = line_split # unpack into the two merged tokens
+        #         merges.append((a.encode('utf-8'), b.encode('utf-8')))
         return cls(vocab, merges, special_tokens)
+    
+    @classmethod
+    def from_folder(cls, folder_path, special_tokens=None):
+        return cls.from_files(f"{folder_path}/vocab.pkl", f"{folder_path}/merges.txt", special_tokens)
     
     def _find_pairs(pair: tuple[bytes, bytes], word: tuple[bytes, ...]):
         for i in range(len(word) - 1):
@@ -98,7 +107,6 @@ class Tokenizer:
             # and yield the special tokens intact.
             for i in range(len(slices_filtered)):
                 start = 0 if i == 0 else slices_filtered[i-1][1]
-                print(f"Start = {start}, slice = {slices_filtered[i]}")
                 for match in self.pretokenize_pat.finditer(text[start:slices_filtered[i][0]]):
                     yield text[start + match.start():start + match.end()]
                 slice_start, slice_end = slices_filtered[i]
@@ -112,7 +120,6 @@ class Tokenizer:
     def encode(self, text: str) -> list[int]:
         token_ids = []
         for pretoken in self._get_pretokens(text):
-            print(pretoken)
             pretoken_enc = pretoken.encode('utf-8')
             if pretoken_enc in self.token2id:
                 # This handles special tokens. It also immediately
@@ -146,8 +153,8 @@ class Tokenizer:
                         if len(token) == 1:
                             # No further merges.
                             break
-                    for token_id in (self.token2id[subword] for subword in token):
-                        yield token_id
+                    for subword in token:
+                        yield self.token2id[subword]
     
     def decode(self, ids: list[int]) -> str:
         decoded_bytes = b''

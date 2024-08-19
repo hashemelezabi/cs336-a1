@@ -131,7 +131,7 @@ def train_bpe(
     with open(input_path) as f:
         for i, line in enumerate(f):
             for pretoken in PAT.findall(line):
-                encoded = tuple([bytes([b]) for b in pretoken.encode('utf-8')])
+                encoded = tuple([c.encode('utf-8') for c in pretoken])
                 word_counts[encoded] += 1
 
     # We store words in a list (instead of dictionary mapping word to count)
@@ -247,28 +247,27 @@ if __name__ == '__main__':
     )
     
     # Save the vocab and merges
+
+    print("Writing vocab and merges to disk...")
+    start = time.time()
+
     os.makedirs(f"bpe_out/{args.name}", exist_ok=True)
+
+    # Serialize vocab and merges to disk using pickle.
+    with open(f"bpe_out/{args.name}/vocab.pkl", "wb") as f:
+        pickle.dump(vocab, f)
+    with open(f"bpe_out/{args.name}/merges.pkl", "wb") as f:
+        pickle.dump(merges, f)
+
+    # Write json file that can be viewed by a human
     token_to_id = {}
     for k, v in vocab.items():
         if 128 + len(args.special_tokens) <= k < 256 + len(args.special_tokens):
             # These bytes can't be decoded to utf-8 (meaningless on their own)
             continue
         token_to_id[v.decode('utf-8')] = k
-    
-    print("Writing vocab and merges to disk...")
-    start = time.time()
-
-    # Write json file that can be viewed by a human
     with open(f"bpe_out/{args.name}/vocab.json", "w", encoding="utf-8") as f:
         f.write(json.dumps(token_to_id, indent=2, sort_keys=True, ensure_ascii=False) + "\n")
-    # Serialize vocab dictionary with pickle. Can't write all entries to JSON
-    # because bytes from 128 up to and not including 256 aren't valid characters.
-    with open(f"bpe_out/{args.name}/vocab.pkl", "wb") as f:
-        pickle.dump(vocab, f)
-    # Write merges to text file
-    with open(f"bpe_out/{args.name}/merges.txt", "w") as f:
-        for a, b in merges:
-            f.write(f"{a.decode('utf-8')} {b.decode('utf-8')}\n")
 
     end = time.time()
     print(f"\tTime taken: {(end - start)/60:.2f} minutes")
