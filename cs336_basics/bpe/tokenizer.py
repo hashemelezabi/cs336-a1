@@ -67,15 +67,18 @@ class Tokenizer:
         return slices
     
     def _get_pretokens(self, text):
+        """
+        Returns iterator over pretokens.
+        """
         # Avoid splitting special tokens by finding them
         # and adding them intact to `pretokens`.
         special_token_slices = []
         if self.special_tokens:
             for special_tok in self.special_tokens:
                 special_token_slices.extend(self._find_all(text, special_tok))
-        pretokens = []
         if not special_token_slices:
-            pretokens = self.pretokenize_pat.findall(text)
+            for match in self.pretokenize_pat.finditer(text):
+                yield text[match.start():match.end()]
         else:
             special_token_slices.sort()
              # Remove slices contained in other slices, e.g.
@@ -91,26 +94,25 @@ class Tokenizer:
                 ):
                     continue
                 slices_filtered.append(slice)
-            # Now pretokenize those parts around the special tokens
-            # and add the special tokens intact.
+            # Now pretokenize the parts around the special tokens
+            # and yield the special tokens intact.
             for i in range(len(slices_filtered)):
                 start = 0 if i == 0 else slices_filtered[i-1][1]
-                pretokens.extend(
-                    self.pretokenize_pat.findall(
-                        text[start:slices_filtered[i][0]]
-                    )
-                )
+                print(f"Start = {start}, slice = {slices_filtered[i]}")
+                for match in self.pretokenize_pat.finditer(text[start:slices_filtered[i][0]]):
+                    yield text[start + match.start():start + match.end()]
                 slice_start, slice_end = slices_filtered[i]
-                # Append the special token as is.
-                pretokens.append(text[slice_start:slice_end])
-            pretokens.extend(self.pretokenize_pat.findall(
-                text[slices_filtered[-1][1]:]
-            ))
-        return pretokens
+                # Yield the special token as is.
+                yield text[slice_start:slice_end]
+            # Yield the remaining non-special token pretokens.
+            start = slices_filtered[-1][1]
+            for match in self.pretokenize_pat.finditer(text[start:]):
+                yield text[start + match.start():start + match.end()]
 
     def encode(self, text: str) -> list[int]:
         token_ids = []
         for pretoken in self._get_pretokens(text):
+            print(pretoken)
             pretoken_enc = pretoken.encode('utf-8')
             if pretoken_enc in self.token2id:
                 # This handles special tokens. It also immediately
