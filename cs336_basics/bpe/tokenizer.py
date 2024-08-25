@@ -35,7 +35,7 @@ class Tokenizer:
     
     @classmethod
     def from_folder(cls, folder_path, special_tokens=None):
-        return cls.from_files(f"{folder_path}/vocab.pkl", f"{folder_path}/merges.txt", special_tokens)
+        return cls.from_files(f"{folder_path}/vocab.pkl", f"{folder_path}/merges.pkl", special_tokens)
     
     def _find_pairs(pair: tuple[bytes, bytes], word: tuple[bytes, ...]):
         for i in range(len(word) - 1):
