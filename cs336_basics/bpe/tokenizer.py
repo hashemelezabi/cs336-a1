@@ -10,7 +10,7 @@ class Tokenizer:
         special_tokens: list[str] | None = None
     ):
         self.id2token = vocab
-        self.merges = merges
+        self.merge2idx = {merge: idx for idx, merge in enumerate(merges)}
         self.token2id: dict[bytes, int] = {token: token_id for token_id, token in vocab.items()}
         self.special_tokens = special_tokens
 
@@ -127,11 +127,13 @@ class Tokenizer:
                 continue
             # Apply BPE merges until we can't apply them anymore.
             token = tuple([bytes([b]) for b in pretoken.encode('utf-8')])
-            for pair in self.merges:
-                token = self._apply_merge(pair, token)
-                if len(token) == 1:
-                    # No further merges.
+            while len(token) >= 2:
+                pairs_in_token = set(zip(token, token[1:]))
+                earliest_merge = min(pairs_in_token, key=lambda p: self.merge2idx.get(p, float('inf')))
+                if earliest_merge not in self.merge2idx:
+                    # No more applicable merges.
                     break
+                token = self._apply_merge(earliest_merge, token)
             token_ids.extend([self.token2id[subword] for subword in token])
         return token_ids
     
@@ -144,11 +146,15 @@ class Tokenizer:
                 else:
                     # Apply BPE merges until we can't apply them anymore.
                     token = tuple([bytes([b]) for b in pretoken.encode('utf-8')])
-                    for pair in self.merges:
-                        token = self._apply_merge(pair, token)
-                        if len(token) == 1:
-                            # No further merges.
+                    # https://github.com/karpathy/minbpe/blob/1acefe89412b20245db5a22d2a02001e547dc602/minbpe/basic.py#L57
+                    while len(token) >= 2:
+                        pairs_in_token = set(zip(token, token[1:]))
+                        earliest_merge = min(pairs_in_token, key=lambda p: self.merge2idx.get(p, float('inf')))
+                        if earliest_merge not in self.merge2idx:
+                            # No more applicable merges.
                             break
+                        token = self._apply_merge(earliest_merge, token)
+                    # Yield IDs.
                     for subword in token:
                         yield self.token2id[subword]
     
